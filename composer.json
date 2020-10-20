@@ -1,0 +1,12 @@
+{
+    "autoload": {
+        "files": ["pull-worker.php"]
+    },
+    "require": {
+        "amphp/parallel": "^1.4",
+        "google/cloud-pubsub": "^1.29"
+    },
+    "require-dev": {
+        "vimeo/psalm": "^3.17"
+    }
+}
