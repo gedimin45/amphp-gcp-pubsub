@@ -27,31 +27,21 @@ $topic->publish([
     ]
 ]);
 
-//// when there are < x unacknowledged messages, every X seconds
-//$messages = $subscription->pull();
-//
-//$promises = [];
-//$messagesToAck = [];
-//
-//foreach ($messages as $message) {
-//    Worker\enqueueCallable('processPulledMessage', $message)->onResolve(function ($error, $data) use ($message) {
-//        $messagesToAck[] = $message;
-//        return print($data . "\n");
-//    });
-//}
-//
-//$responses = Promise\wait(Promise\all($promises));
-//
-//foreach ($responses as $url => $response) {
-//    \printf("Read %d bytes from %s\n", \strlen($response), $url);
-//}
-
 Loop::run(function() use ($subscription) {
+    $pullInProgress = false;
     $messagesToAck = [];
 
-    Loop::repeat($msInterval = 1000, function () use (&$messagesToAck, $subscription) {
+    $pull = function () use (&$pullInProgress, &$messagesToAck, $subscription) {
+        if ($pullInProgress) {
+            echo "Pull already in progress\n";
+            return;
+        }
         echo "Scheduling a pull\n";
-        Worker\enqueueCallable('pullFromPubsub')->onResolve(function (?\Throwable $error, $response) use (&$messagesToAck) {
+
+        $pullInProgress = true;
+
+        Worker\enqueueCallable('pullFromPubsub')->onResolve(function (?\Throwable $error, $response) use (&$messagesToAck, &$pullInProgress) {
+            $pullInProgress = false;
             if ($error instanceof \Throwable) {
                 print("Encountered error: {$error->getMessage()}.\n");
                 if ($error instanceof Amp\Parallel\Worker\TaskFailureError) {
@@ -73,7 +63,8 @@ Loop::run(function() use ($subscription) {
                 });
             }
         });
-    });
+    };
+    Loop::repeat($msInterval = 1000, $pull);
 
     Loop::repeat($msInterval = 1000, function () use (&$messagesToAck, $subscription) {
         if ($messagesToAck === []) {
