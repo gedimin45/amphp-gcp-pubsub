@@ -1,6 +1,6 @@
 {
     "autoload": {
-        "files": ["pull-worker.php"]
+        "files": ["worker.php"]
     },
     "require": {
         "amphp/parallel": "^1.4",
