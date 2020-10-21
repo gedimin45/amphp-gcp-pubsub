@@ -60,7 +60,7 @@ Loop::run(function() {
         $messagesToAck = [];
     });
 
-    Loop::repeat($msInterval = 1000, function () use ($pool, &$messagesToAck) {
+    Loop::repeat($msInterval = 500, function () use ($pool, &$messagesToAck) {
         yield $pool->enqueue(new Worker\CallableTask('publishPubsubMessages', []));
     });
 });

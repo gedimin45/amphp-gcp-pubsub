@@ -35,7 +35,7 @@ function publishPubsubMessages()
     $topic = $pubSub->topic('amphp-tryout');
 
     $messages = [];
-    for ($i = 0; $i < 1000; $i++) {
+    for ($i = 0; $i < 500; $i++) {
         $messages[] = ['data' => 'Message with some content ' . uniqid()];
     }
 
