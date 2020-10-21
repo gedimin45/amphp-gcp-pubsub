@@ -1,0 +1,17 @@
+version: '3.1'
+
+services:
+    php:
+        build:
+            dockerfile: Dockerfile
+            context: .
+        volumes:
+            - .:/app
+        working_dir: /app
+        environment:
+            PUBSUB_EMULATOR_HOST: pubsub-emulator:8681
+        depends_on:
+            -   pubsub-emulator
+
+    pubsub-emulator:
+        image: messagebird/gcloud-pubsub-emulator
