@@ -21,18 +21,33 @@ if (!$subscription->exists()) {
     $subscription->create();
 }
 
-Loop::run(function() {
+function printDebug(string $str): void
+{
+    if (array_key_exists('debug', getopt('', ['debug']))) {
+        print($str);
+    }
+}
+
+Loop::run(function () {
     $pullInProgress = false;
     $messagesToAck = [];
+    $processedMessageCount = 0;
+    $startTime = time();
 
     $pool = new DefaultPool;
 
-    $pull = function () use ($pool, &$pullInProgress, &$messagesToAck) {
+    $pull = function () use (&$processedMessageCount, $pool, &$pullInProgress, &$messagesToAck) {
         if ($pullInProgress) {
-            echo "Pull already in progress\n";
+            printDebug("Skipping pull since one is already in progress\n");
             return;
         }
-        echo "Scheduling a pull\n";
+
+        if (count($messagesToAck) > 1000) {
+            printDebug("Skipping pull since there are " . count($messagesToAck) . " messages being processed\n");
+            return;
+        }
+
+        printDebug("Scheduling a pull\n");
 
         $pullInProgress = true;
 
@@ -40,27 +55,35 @@ Loop::run(function() {
 
         $pullInProgress = false;
 
-        echo "Pulled " . count($response['messages']) . " messages in {$response['duration']} s\n";
+        printDebug("Pulled " . count($response['messages']) . " messages in {$response['duration']} s\n");
 
+        /** @var \Google\Cloud\PubSub\Message $message */
         foreach ($response['messages'] as $message) {
             yield $pool->enqueue(new Worker\CallableTask('processPulledMessage', [$message]));
             $messagesToAck[] = $message;
+            $processedMessageCount = $processedMessageCount+1;
         }
     };
-    Loop::repeat($msInterval = 1000, $pull);
+    Loop::repeat($msInterval = 100, $pull);
 
     Loop::repeat($msInterval = 1000, function () use ($pool, &$messagesToAck) {
         if ($messagesToAck === []) {
             return;
         }
 
-        echo "Scheduling an Ack for " . count($messagesToAck) . " messages\n";
+        printDebug("Scheduling an Ack for " . count($messagesToAck) . " messages\n");
 
         yield $pool->enqueue(new Worker\CallableTask('ackPubsubMessages', [$messagesToAck]));
         $messagesToAck = [];
     });
 
-    Loop::repeat($msInterval = 500, function () use ($pool, &$messagesToAck) {
+    Loop::repeat($msInterval = 500, function () use ($pool) {
         yield $pool->enqueue(new Worker\CallableTask('publishPubsubMessages', []));
+    });
+
+    Loop::repeat($msInterval = 1500, function () use (&$startTime, &$processedMessageCount) {
+        $secondsRunning = time() - $startTime;
+        $messagesPerSecond = round($processedMessageCount / $secondsRunning, 2);
+        print("Processed {$processedMessageCount} messages in total ($messagesPerSecond messages/s)\n");
     });
 });
