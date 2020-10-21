@@ -4,6 +4,7 @@ require __DIR__ . '/vendor/autoload.php';
 
 use Amp\Loop;
 use Amp\Parallel\Worker;
+use Amp\Parallel\Worker\DefaultPool;
 use Google\Cloud\PubSub\PubSubClient;
 
 $pubSub = new PubSubClient();
@@ -24,7 +25,9 @@ Loop::run(function() use ($subscription) {
     $pullInProgress = false;
     $messagesToAck = [];
 
-    $pull = function () use (&$pullInProgress, &$messagesToAck, $subscription) {
+    $pool = new DefaultPool;
+
+    $pull = function () use ($pool, &$pullInProgress, &$messagesToAck, $subscription) {
         if ($pullInProgress) {
             echo "Pull already in progress\n";
             return;
@@ -33,48 +36,31 @@ Loop::run(function() use ($subscription) {
 
         $pullInProgress = true;
 
-        Worker\enqueueCallable('pullFromPubsub')->onResolve(function (?\Throwable $error, $response) use (&$messagesToAck, &$pullInProgress) {
-            $pullInProgress = false;
-            if ($error instanceof \Throwable) {
-                print("Encountered error: {$error->getMessage()}.\n");
-                if ($error instanceof Amp\Parallel\Worker\TaskFailureError) {
-                    print($error->getOriginalMessage() . "\n");
-                }
-                return;
-            }
-            echo "Pulled " . count($response['messages']) . " messages in {$response['duration']} s\n";
+        $response = yield $pool->enqueue(new Worker\CallableTask('pullFromPubsub', []));
 
-            foreach ($response['messages'] as $message) {
-                Worker\enqueueCallable('processPulledMessage', $message)->onResolve(function (?\Throwable $error, $data) use ($message, &$messagesToAck) {
-                    if ($error instanceof \Throwable) {
-                        print("Encountered error: {$error->getMessage()}.\n");
-                        return;
-                    }
-                    $messagesToAck[] = $message;
-                    print($data . "\n");
-                });
-            }
-        });
+        $pullInProgress = false;
+
+        echo "Pulled " . count($response['messages']) . " messages in {$response['duration']} s\n";
+
+        foreach ($response['messages'] as $message) {
+            yield $pool->enqueue(new Worker\CallableTask('processPulledMessage', [$message]));
+            $messagesToAck[] = $message;
+        }
     };
     Loop::repeat($msInterval = 1000, $pull);
 
-    Loop::repeat($msInterval = 1000, function () use (&$messagesToAck, $subscription) {
+    Loop::repeat($msInterval = 1000, function () use ($pool, &$messagesToAck, $subscription) {
         if ($messagesToAck === []) {
             return;
         }
 
         echo "Scheduling an Ack for " . count($messagesToAck) . " messages\n";
 
-        Worker\enqueueCallable('ackPubsubMessages', $messagesToAck)->onResolve(function (?\Throwable $error, $data) use (&$messagesToAck) {
-            $messagesToAck = [];
-        });
+        yield $pool->enqueue(new Worker\CallableTask('ackPubsubMessages', [$messagesToAck]));
+        $messagesToAck = [];
     });
 
-    Loop::repeat($msInterval = 1000, function () use (&$messagesToAck, $subscription) {
-        Worker\enqueueCallable('publishPubsubMessages')->onResolve(function (?\Throwable $error, $data) {
-            if ($error instanceof \Throwable) {
-                echo "Error when publishing: {$error->getMessage()}\n";
-            }
-        });
+    Loop::repeat($msInterval = 1000, function () use ($pool, &$messagesToAck, $subscription) {
+        yield $pool->enqueue(new Worker\CallableTask('publishPubsubMessages', []));
     });
 });
