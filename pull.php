@@ -20,13 +20,6 @@ if (!$subscription->exists()) {
     $subscription->create();
 }
 
-$topic->publish([
-    'data' => 'My new message.',
-    'attributes' => [
-        'location' => 'Detroit'
-    ]
-]);
-
 Loop::run(function() use ($subscription) {
     $pullInProgress = false;
     $messagesToAck = [];
@@ -74,6 +67,14 @@ Loop::run(function() use ($subscription) {
 
         Worker\enqueueCallable('ackPubsubMessages', $messagesToAck)->onResolve(function (?\Throwable $error, $data) use (&$messagesToAck) {
             $messagesToAck = [];
+        });
+    });
+
+    Loop::repeat($msInterval = 1000, function () use (&$messagesToAck, $subscription) {
+        Worker\enqueueCallable('publishPubsubMessages')->onResolve(function (?\Throwable $error, $data) {
+            if ($error instanceof \Throwable) {
+                echo "Error when publishing: {$error->getMessage()}\n";
+            }
         });
     });
 });
