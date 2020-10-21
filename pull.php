@@ -23,11 +23,11 @@ if (!$subscription->exists()) {
 
 Loop::run(function() {
     $pullInProgress = false;
-    $messagesToProcess = [];
+    $messagesToAck = [];
 
     $pool = new DefaultPool;
 
-    $pull = function () use ($pool, &$pullInProgress, &$messagesToProcess) {
+    $pull = function () use ($pool, &$pullInProgress, &$messagesToAck) {
         if ($pullInProgress) {
             echo "Pull already in progress\n";
             return;
@@ -44,23 +44,23 @@ Loop::run(function() {
 
         foreach ($response['messages'] as $message) {
             yield $pool->enqueue(new Worker\CallableTask('processPulledMessage', [$message]));
-            $messagesToProcess[] = $message;
+            $messagesToAck[] = $message;
         }
     };
     Loop::repeat($msInterval = 1000, $pull);
 
-    Loop::repeat($msInterval = 1000, function () use ($pool, &$messagesToProcess) {
-        if ($messagesToProcess === []) {
+    Loop::repeat($msInterval = 1000, function () use ($pool, &$messagesToAck) {
+        if ($messagesToAck === []) {
             return;
         }
 
-        echo "Scheduling an Ack for " . count($messagesToProcess) . " messages\n";
+        echo "Scheduling an Ack for " . count($messagesToAck) . " messages\n";
 
-        yield $pool->enqueue(new Worker\CallableTask('ackPubsubMessages', [$messagesToProcess]));
-        $messagesToProcess = [];
+        yield $pool->enqueue(new Worker\CallableTask('ackPubsubMessages', [$messagesToAck]));
+        $messagesToAck = [];
     });
 
-    Loop::repeat($msInterval = 1000, function () use ($pool, &$messagesToProcess) {
+    Loop::repeat($msInterval = 1000, function () use ($pool, &$messagesToAck) {
         yield $pool->enqueue(new Worker\CallableTask('publishPubsubMessages', []));
     });
 });
