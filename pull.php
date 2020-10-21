@@ -49,7 +49,6 @@ Loop::run(function() use ($subscription) {
                 }
                 return;
             }
-            $response = unserialize($response);
             echo "Pulled " . count($response['messages']) . " messages in {$response['duration']} s\n";
 
             foreach ($response['messages'] as $message) {

@@ -16,10 +16,10 @@ function pullFromPubsub()
     $messagesToProcess = $subscription->pull();
     $pullDuration = microtime(true) - $pullStartedAt;
 
-    return serialize([
+    return [
         'duration' => $pullDuration,
         'messages' => $messagesToProcess,
-    ]);
+    ];
 }
 
 function ackPubsubMessages($messages)
@@ -27,4 +27,17 @@ function ackPubsubMessages($messages)
     $pubSub = new PubSubClient();
     $subscription = $pubSub->subscription('my_subscription', 'amphp-tryout');
     $subscription->acknowledgeBatch($messages);
+}
+
+function publishPubsubMessages()
+{
+    $pubSub = new PubSubClient();
+    $topic = $pubSub->topic('amphp-tryout');
+
+    $messages = [];
+    for ($i = 0; $i < 1000; $i++) {
+        $messages[] = ['data' => 'Message with some content ' . uniqid()];
+    }
+
+    $topic->publishBatch($messages);
 }
